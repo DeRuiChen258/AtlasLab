@@ -97,6 +97,10 @@ try:
 except ValueError:
     _DEFAULT_VALIDATION_REPAIRS = 2
 
+_JSON_RESPONSE_FORMAT_DISABLED = (
+    os.getenv("MATH_AGENT_LLM_DISABLE_JSON_RESPONSE_FORMAT", "0") == "1"
+)
+
 
 def _get_clock():
     """内部测试 seam；业务节点不应替换时钟。"""
@@ -331,6 +335,18 @@ def _configure_callbacks_once():
     _LITELLM_CALLBACKS_CONFIGURED = True
 
 
+def _supports_json_response_format(model: str) -> bool:
+    """判断当前模型是否应发送 OpenAI JSON mode response_format。
+
+    DeepSeek reasoner 官方接口不支持 response_format，即使模型本身能输出
+    JSON；AtlasLab 的解析层会从文本中提取 JSON，因此直接跳过该参数即可。
+    """
+    if _JSON_RESPONSE_FORMAT_DISABLED:
+        return False
+    model_name = model.rsplit("/", 1)[-1].lower()
+    return model_name != "deepseek-reasoner"
+
+
 def complete(
     prompt: str,
     *,
@@ -369,7 +385,7 @@ def complete(
         messages.append({"role": "user", "content": prompt})
 
     response_format = None
-    if schema is not None:
+    if schema is not None and _supports_json_response_format(model):
         response_format = {"type": "json_object"}
 
     repairs = (

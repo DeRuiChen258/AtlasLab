@@ -103,7 +103,8 @@ async function generateFileMeta(filePath) {
     ".venv",
     globalThis.process?.platform === "win32" ? "Scripts/python.exe" : "bin/python",
   );
-  const python = env.PYTHON || (existsSync(venvPython) ? venvPython : "python");
+  const python = env.PYTHON
+    || (existsSync(venvPython) ? venvPython : process.platform === "win32" ? "python" : "python3");
   const py = spawn(python, ["scripts/extract_file_meta.py", filePath], {
     cwd: projectRoot,
     windowsHide: true,

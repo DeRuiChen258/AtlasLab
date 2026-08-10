@@ -53,6 +53,24 @@ def test_complete_returns_pydantic_when_schema(fake_transport):
     assert out.score == 9
 
 
+def test_deepseek_chat_uses_json_response_format(fake_transport):
+    fake_transport.enqueue_ok('{"summary": "ok", "score": 8}')
+    out = llm_mod.complete(
+        "rate it", schema=_Answer, model="openai/deepseek-chat"
+    )
+    assert isinstance(out, _Answer)
+    assert fake_transport.calls[0].response_format == {"type": "json_object"}
+
+
+def test_deepseek_reasoner_skips_unsupported_response_format(fake_transport):
+    fake_transport.enqueue_ok('{"summary": "ok", "score": 8}')
+    out = llm_mod.complete(
+        "rate it", schema=_Answer, model="openai/deepseek-reasoner"
+    )
+    assert isinstance(out, _Answer)
+    assert fake_transport.calls[0].response_format is None
+
+
 def test_complete_retries_on_invalid_json(fake_transport, monkeypatch):
     monkeypatch.setattr(llm_mod, "_DEFAULT_VALIDATION_REPAIRS", 2)
     fake_transport.enqueue_ok("not json")

@@ -300,7 +300,7 @@ test("GET /api/onboarding/status 返回引导状态", async () => {
   const response = await fetch(`${base}/api/onboarding/status`);
   assert.equal(response.status, 200);
   const data = await response.json();
-  assert.ok(["no_env", "no_api_key", "done"].includes(data.reason));
+  assert.ok(["no_env", "no_api_key", "no_model_config", "done"].includes(data.reason));
   assert.equal(typeof data.needed, "boolean");
 });
 
@@ -311,6 +311,7 @@ test("GET /api/config 返回配置（密钥掩码）", async () => {
   assert.ok(data.apiBase !== undefined);
   assert.ok(data.defaultModel !== undefined);
   assert.ok(data.strongModel !== undefined);
+  assert.ok(data.coderModel !== undefined);
   // apiKey 不应包含明文（如果存在的话应被掩码）
   if (data.apiKey) {
     assert.ok(data.apiKey.includes("***") || data.apiKey.length === 0);
@@ -321,7 +322,7 @@ test("GET /api/health 包含 onboarding 字段", async () => {
   const response = await fetch(`${base}/api/health`);
   const data = await response.json();
   assert.ok(data.onboarding);
-  assert.ok(["no_env", "no_api_key", "done"].includes(data.onboarding.reason));
+  assert.ok(["no_env", "no_api_key", "no_model_config", "done"].includes(data.onboarding.reason));
 });
 
 test("POST /api/config/test-llm 拒绝缺少参数的请求", async () => {

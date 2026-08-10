@@ -7,7 +7,7 @@ const ENV_PATH = resolve(projectRoot, ".env");
 
 /**
  * 判断是否需要引导。
- * @returns {{ needed: boolean, reason: "no_env" | "no_api_key" | "done" }}
+ * @returns {{ needed: boolean, reason: "no_env" | "no_api_key" | "no_model_config" | "done" }}
  */
 export function getOnboardingStatus() {
   if (!existsSync(ENV_PATH)) {
@@ -20,6 +20,14 @@ export function getOnboardingStatus() {
 
   if (!apiKey) {
     return { needed: true, reason: "no_api_key" };
+  }
+
+  // 如果 API key 和默认模型都已设置，认为配置已完成，跳过引导
+  const modelMatch = content.match(/^MATH_AGENT_DEFAULT_MODEL\s*=\s*(.+)$/m);
+  const defaultModel = modelMatch ? modelMatch[1].trim() : "";
+
+  if (!defaultModel) {
+    return { needed: true, reason: "no_model_config" };
   }
 
   return { needed: false, reason: "done" };

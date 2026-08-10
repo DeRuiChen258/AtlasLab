@@ -1050,7 +1050,10 @@ function renderModelTestStep() {
       <input id="obFigureModel" value="${escapeHtml(onboardingData.figureModel)}" />
       <span class="field-hint">需支持视觉输入；留空则回退到强力模型</span>
     </label>
-    <button class="primary-button" type="button" id="obTestBtn">测试模型连接</button>
+    <div class="ob-test-actions">
+      <button class="primary-button" type="button" id="obTestBtn">测试模型连接</button>
+      <button class="ghost-button" type="button" id="obSkipTest">跳过测试</button>
+    </div>
     <div id="obTestResult"></div>
   `;
   const dmInput = document.querySelector("#obDefaultModel");
@@ -1060,23 +1063,72 @@ function renderModelTestStep() {
   smInput.addEventListener("input", () => { onboardingData.strongModel = smInput.value; });
   fmInput.addEventListener("input", () => { onboardingData.figureModel = fmInput.value; });
 
+  let testCompleted = false;
+  let allOk = false;
+
+  document.querySelector("#obSkipTest").addEventListener("click", () => {
+    const result = document.querySelector("#obTestResult");
+    if (!testCompleted) {
+      result.innerHTML = '<div class="test-result warn">⚠ 已跳过模型测试 — 连接失败时运行会报错</div>';
+    }
+    onboardingNext.disabled = false;
+  });
+
   document.querySelector("#obTestBtn").addEventListener("click", async () => {
     const result = document.querySelector("#obTestResult");
+    const btn = document.querySelector("#obTestBtn");
+    btn.disabled = true;
+    btn.textContent = "测试中...";
     result.innerHTML = '<p style="color:var(--muted);">测试中...</p>';
     try {
       const figureModel = onboardingData.figureModel || onboardingData.strongModel;
-      const [defaultModelResult, strongModelResult, figureModelResult] = await Promise.all([
-        testLlm(onboardingData.apiBase, onboardingData.apiKey, onboardingData.defaultModel),
-        testLlm(onboardingData.apiBase, onboardingData.apiKey, onboardingData.strongModel),
-        figureModel ? testLlm(onboardingData.apiBase, onboardingData.apiKey, figureModel) : Promise.resolve(null),
-      ]);
-      let html = renderTestResult("主力模型", defaultModelResult) + renderTestResult("强力模型", strongModelResult);
-      if (figureModelResult) html += renderTestResult("图像模型", figureModelResult);
-      result.innerHTML = html;
-      const allOk = defaultModelResult.success && strongModelResult.success && (!figureModelResult || figureModelResult.success);
-      onboardingNext.disabled = !allOk;
+      // 每个模型独立测试，结果实时更新
+      const models = [
+        { label: "主力模型", fn: testLlm(onboardingData.apiBase, onboardingData.apiKey, onboardingData.defaultModel) },
+        { label: "强力模型", fn: testLlm(onboardingData.apiBase, onboardingData.apiKey, onboardingData.strongModel) },
+      ];
+      if (figureModel) {
+        models.push({ label: "图像模型", fn: testLlm(onboardingData.apiBase, onboardingData.apiKey, figureModel) });
+      }
+
+      // 展示每个模型的独立进度
+      const testStates = models.map((m) => ({ ...m, status: "pending", result: null }));
+      function renderTestResults() {
+        let html = "";
+        for (const ts of testStates) {
+          if (ts.status === "pending") html += `<div class="test-result">⌛ ${escapeHtml(ts.label)}：测试中...</div>`;
+          else if (ts.status === "ok") html += `<div class="test-result ok">✓ ${escapeHtml(ts.label)} 连接成功 · ${ts.result.latency_ms}ms</div>`;
+          else html += `<div class="test-result fail">✗ ${escapeHtml(ts.label)} 失败: ${escapeHtml(ts.result?.error || "连接失败")}</div>`;
+        }
+        result.innerHTML = html;
+      }
+      renderTestResults();
+
+      const settled = await Promise.allSettled(testStates.map(async (ts, i) => {
+        try {
+          ts.result = await ts.fn;
+          ts.status = ts.result.success ? "ok" : "fail";
+        } catch (e) {
+          ts.result = { error: e.message };
+          ts.status = "fail";
+        }
+        renderTestResults();
+      }));
+
+      testCompleted = true;
+      allOk = testStates.every((ts) => ts.status === "ok");
+      btn.disabled = false;
+      btn.textContent = "重新测试";
+      onboardingNext.disabled = false;  // 始终允许继续
+      if (!allOk) {
+        result.insertAdjacentHTML("beforeend",
+          '<p class="test-result-warning" style="color:var(--amber);margin-top:10px;">⚠ 部分模型未通过测试，配置仍会保存。你可以在设置页面重新测试和修改。</p>');
+      }
     } catch (error) {
       result.innerHTML = `<div class="test-result fail">测试失败: ${escapeHtml(error.message)}</div>`;
+      btn.disabled = false;
+      btn.textContent = "重新测试";
+      onboardingNext.disabled = false;
     }
   });
   onboardingNext.disabled = true;
@@ -1107,6 +1159,7 @@ async function renderCompleteStep() {
         apiKey: onboardingData.apiKey,
         defaultModel: onboardingData.defaultModel,
         strongModel: onboardingData.strongModel,
+        coderModel: onboardingData.defaultModel,
         figureModel: onboardingData.figureModel,
       }),
     });
@@ -1231,6 +1284,11 @@ function renderSettingsModels() {
       <span class="field-hint">用于核心节点</span>
     </div>
     <div class="field">
+      <span>编码模型（代码生成与执行修复）</span>
+      <input id="setCoderModel" value="${escapeHtml(settingsConfig.coderModel || settingsConfig.defaultModel)}" />
+      <span class="field-hint">缺省回退到主力模型</span>
+    </div>
+    <div class="field">
       <span>图像模型（图表评审与图说生成）</span>
       <input id="setFigureModel" value="${escapeHtml(settingsConfig.figureModel)}" />
       <span class="field-hint">需支持视觉输入；留空则回退到强力模型</span>
@@ -1297,6 +1355,7 @@ function collectSettings() {
   const apiKey = document.querySelector("#setApiKey");
   const defaultModel = document.querySelector("#setDefaultModel");
   const strongModel = document.querySelector("#setStrongModel");
+  const coderModel = document.querySelector("#setCoderModel");
   const figureModel = document.querySelector("#setFigureModel");
   const ragToggle = document.querySelector("#setRagToggle");
   const ragEmbed = document.querySelector("#setRagEmbed");
@@ -1310,6 +1369,7 @@ function collectSettings() {
   if (apiKey && !apiKey.value.includes("***")) config.apiKey = apiKey.value;
   if (defaultModel) config.defaultModel = defaultModel.value;
   if (strongModel) config.strongModel = strongModel.value;
+  if (coderModel && coderModel.value.trim()) config.coderModel = coderModel.value.trim();
   if (figureModel) config.figureModel = figureModel.value;
   if (ragToggle) config.ragEnabled = ragToggle.classList.contains("on");
   if (ragEmbed) config.ragEmbeddingModel = ragEmbed.value;

@@ -184,6 +184,7 @@ from math_agent.errors import (
 )
 
 _KILL_GRACE = float(os.getenv("MATH_AGENT_LLM_WORKER_KILL_GRACE", "2"))
+_WORKER_STARTUP_TIMEOUT = float(os.getenv("MATH_AGENT_LLM_WORKER_STARTUP_TIMEOUT", "15"))
 
 
 def _classify_worker_error(err: dict) -> LLMError:
@@ -238,10 +239,14 @@ class LiteLLMWorkerTransport:
         )
         p.start()
         child_conn.close()  # 父进程关闭子端
-        # A.1 等待 ready（import 完成）；给 30s 上限避免 spawn 卡死
-        if not parent_conn.poll(30):
+        # A.1 等待 ready（import 完成）；给可配置窗口避免 spawn 卡死
+        if not parent_conn.poll(_WORKER_STARTUP_TIMEOUT):
             self._terminate(p, parent_conn)
-            raise LLMConnectionError("worker 启动握手超时（30s 未 ready）")
+            raise LLMConnectionError(
+                f"worker 启动握手超时（{_WORKER_STARTUP_TIMEOUT:.0f}s 未 ready）。"
+                "请检查 litellm 是否已安装（uv run python -c 'import litellm'），"
+                "或通过 MATH_AGENT_LLM_WORKER_STARTUP_TIMEOUT 环境变量增大超时。"
+            )
         try:
             msg = parent_conn.recv()
         except (EOFError, OSError) as e:

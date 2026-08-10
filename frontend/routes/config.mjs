@@ -12,6 +12,7 @@ const FIELD_MAP = {
   apiKey: "OPENAI_API_KEY",
   defaultModel: "MATH_AGENT_DEFAULT_MODEL",
   strongModel: "MATH_AGENT_STRONG_MODEL",
+  coderModel: "MATH_AGENT_CODER_MODEL",
   figureModel: "MATH_AGENT_FIGURE_MODEL",
   fallbackModels: "MATH_AGENT_LLM_FALLBACK_MODELS",
   llmTimeout: "MATH_AGENT_LLM_TIMEOUT",
@@ -144,6 +145,7 @@ export async function handleConfigRoutes(request, response, url) {
       hasApiKey: !!envVars.OPENAI_API_KEY,
       defaultModel: envVars.MATH_AGENT_DEFAULT_MODEL || "",
       strongModel: envVars.MATH_AGENT_STRONG_MODEL || "",
+      coderModel: envVars.MATH_AGENT_CODER_MODEL || envVars.MATH_AGENT_DEFAULT_MODEL || "",
       figureModel: envVars.MATH_AGENT_FIGURE_MODEL || "",
       fallbackModels: envVars.MATH_AGENT_LLM_FALLBACK_MODELS || "",
       llmTimeout: Number(envVars.MATH_AGENT_LLM_TIMEOUT || 300),
@@ -172,6 +174,9 @@ export async function handleConfigRoutes(request, response, url) {
     }
     if (body.defaultModel !== undefined) updates[FIELD_MAP.defaultModel] = normalizeModelForLitellm(body.defaultModel);
     if (body.strongModel !== undefined) updates[FIELD_MAP.strongModel] = normalizeModelForLitellm(body.strongModel);
+    if (body.coderModel !== undefined && String(body.coderModel).trim()) {
+      updates[FIELD_MAP.coderModel] = normalizeModelForLitellm(body.coderModel);
+    }
     if (body.figureModel !== undefined) updates[FIELD_MAP.figureModel] = normalizeModelForLitellm(body.figureModel);
     if (body.fallbackModels !== undefined) {
       updates[FIELD_MAP.fallbackModels] = String(body.fallbackModels)
@@ -214,7 +219,7 @@ export async function handleConfigRoutes(request, response, url) {
     const startTime = Date.now();
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const timeout = setTimeout(() => controller.abort(), 10_000);
 
       const res = await fetch(`${apiBase.replace(/\/+$/, "")}/chat/completions`, {
         method: "POST",
@@ -246,7 +251,7 @@ export async function handleConfigRoutes(request, response, url) {
     } catch (error) {
       const latency = Date.now() - startTime;
       const errorMsg = error.name === "AbortError"
-        ? "连接超时（30秒）"
+        ? "连接超时（10秒）"
         : `连接失败: ${error.message}`;
       sendJson(response, 200, { success: false, latency_ms: latency, error: errorMsg });
     }
