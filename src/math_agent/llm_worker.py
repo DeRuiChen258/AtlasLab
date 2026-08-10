@@ -17,11 +17,35 @@ from __future__ import annotations
 import logging
 import os
 
+
+def _normalize_proxy_scheme(proxy: str) -> str:
+    """把 socks:// 代理地址转换为 httpx 可识别的 http:// 地址。
+
+    常见 Clash 等本地代理工具会在同一端口同时提供 HTTP 代理，但环境变量
+    可能写成 socks://；LiteLLM/OpenAI 客户端会因未知 scheme 直接失败。
+    """
+    if proxy.startswith("socks://"):
+        return f"http://{proxy[len('socks://'):]}"
+    return proxy
+
+
+def _normalize_proxy_env() -> None:
+    for name in (
+        "ALL_PROXY", "all_proxy",
+        "HTTPS_PROXY", "https_proxy",
+        "HTTP_PROXY", "http_proxy",
+    ):
+        value = os.getenv(name)
+        if value:
+            os.environ[name] = _normalize_proxy_scheme(value)
+
+
 # spawn 上下文：子进程重新 import 本模块，这些 setdefault 在子进程也生效。
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 os.environ.setdefault("LITELLM_LOG", "CRITICAL")
 os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1")
 os.environ.setdefault("no_proxy", "localhost,127.0.0.1")
+_normalize_proxy_env()
 
 import litellm  # noqa: E402  顶层 import：子进程启动即摊销，A.1
 
